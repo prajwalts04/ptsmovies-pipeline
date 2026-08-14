@@ -33,3 +33,19 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
         run: python scripts/process.py
+      - name: Report failure
+        if: ${{ failure() }}
+        env:
+          JOB_ID: ${{ github.event.inputs.job_id }}
+          VPS_WEBHOOK_URL: ${{ github.event.inputs.vps_webhook_url }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          curl -s -X POST "$VPS_WEBHOOK_URL" -H 'Content-Type: application/json' -d "{\"job_id\": \"$JOB_ID\", \"stage\": \"failed\", \"progress\": 0, \"error\": \"GitHub job failed\", \"secret\": \"$WEBHOOK_SECRET\"}" || true
+      - name: Report timeout or cancel
+        if: ${{ cancelled() }}
+        env:
+          JOB_ID: ${{ github.event.inputs.job_id }}
+          VPS_WEBHOOK_URL: ${{ github.event.inputs.vps_webhook_url }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          curl -s -X POST "$VPS_WEBHOOK_URL" -H 'Content-Type: application/json' -d "{\"job_id\": \"$JOB_ID\", \"stage\": \"failed\", \"progress\": 0, \"error\": \"GitHub job timed out (6h limit) or was cancelled\", \"secret\": \"$WEBHOOK_SECRET\"}" || true
