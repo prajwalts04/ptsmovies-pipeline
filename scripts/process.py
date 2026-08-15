@@ -74,7 +74,7 @@ def run_download():
 def run_compress(src):
     post_progress("compress", 0)
     out = WORK_DIR / "final.mp4"
-    cmd = ["ffmpeg", "-y", "-i", str(src), "-c:v", "libx265", "-crf", "26", "-preset", "medium", "-vf", "scale=-2:480", "-c:a", "aac", "-b:a", "128k", "-c:s", "mov_text", "-map", "0", "-tag:v", "hvc1", "-movflags", "+faststart", str(out)]
+    cmd = ["ffmpeg", "-y", "-i", str(src), "-map", "0", "-c:v", "libx265", "-crf", "26", "-preset", "medium", "-vf", "scale=-2:480", "-c:a", "aac", "-b:a", "128k", "-c:s", "mov_text", "-tag:v", "hvc1", "-movflags", "+faststart", str(out)]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(src)], capture_output=True, text=True)
     try: total_dur = float(probe.stdout.strip())
