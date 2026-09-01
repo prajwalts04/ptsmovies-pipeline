@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="pitch_black">#000000</color>
+    <color name="card_bg">#0C0C10</color>
+    <color name="card_border">#22222E</color>
+    <color name="accent_green">#22C55E</color>
+</resources>
