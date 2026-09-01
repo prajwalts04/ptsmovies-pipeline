@@ -252,7 +252,7 @@ class MainActivity : ComponentActivity() {
                                     .background(PitchBlack)
                             ) {
                                 when (currentDestination) {
-                                    AppDestination.HUB, AppDestination.DASHBOARD -> {
+                                    AppDestination.HUB -> {
                                         WebEngineView(
                                             url = "https://hub.ptsmovies.online",
                                             authToken = authToken,
