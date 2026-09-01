@@ -10,7 +10,7 @@ interface ApiService {
 
     // --- Authentication & User Management ---
     @POST("/api/auth/login")
-    async suspend fun login(@Body req: LoginRequest): Response<LoginResponse>
+    suspend fun login(@Body req: LoginRequest): Response<LoginResponse>
 
     @GET("/api/auth/me")
     suspend fun getProfile(): Response<LoginResponse>
