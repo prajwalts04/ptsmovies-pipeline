@@ -56,6 +56,7 @@ fun SystemStatsWidget(stats: SystemStats) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            val cpuPct = stats.cpu?.percent ?: 0f
             // CPU Meter
             Column(
                 modifier = Modifier
@@ -68,14 +69,14 @@ fun SystemStatsWidget(stats: SystemStats) {
             ) {
                 Text(text = "CPU LOAD", fontSize = 11.sp, color = Graphite400, fontWeight = FontWeight.Bold)
                 Text(
-                    text = "${stats.cpuPercent.toInt()}%",
+                    text = "${cpuPct.toInt()}%",
                     fontSize = 18.sp,
                     color = Graphite100,
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace
                 )
                 LinearProgressIndicator(
-                    progress = { stats.cpuPercent / 100f },
+                    progress = { cpuPct / 100f },
                     modifier = Modifier.fillMaxWidth().height(4.dp),
                     color = EmeraldGreen,
                     trackColor = Graphite800
@@ -83,6 +84,8 @@ fun SystemStatsWidget(stats: SystemStats) {
             }
 
             // RAM Meter
+            val memPct = (stats.memory?.percent ?: 0).toFloat()
+            val memUsed = stats.memory?.used ?: "--"
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -94,16 +97,16 @@ fun SystemStatsWidget(stats: SystemStats) {
             ) {
                 Text(text = "RAM USAGE", fontSize = 11.sp, color = Graphite400, fontWeight = FontWeight.Bold)
                 Text(
-                    text = "${stats.ramUsedPercent.toInt()}% (${stats.ramUsedMB} MB)",
-                    fontSize = 14.sp,
+                    text = "${memPct.toInt()}% ($memUsed)",
+                    fontSize = 13.sp,
                     color = Graphite100,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
                 LinearProgressIndicator(
-                    progress = { stats.ramUsedPercent / 100f },
+                    progress = { memPct / 100f },
                     modifier = Modifier.fillMaxWidth().height(4.dp),
-                    color = if (stats.ramUsedPercent > 85f) DangerRed else EmeraldGreen,
+                    color = if (memPct > 85f) DangerRed else EmeraldGreen,
                     trackColor = Graphite800
                 )
             }
@@ -115,6 +118,8 @@ fun SystemStatsWidget(stats: SystemStats) {
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Storage
+            val diskAvail = stats.disk?.avail ?: "--"
+            val diskTotal = stats.disk?.size ?: "--"
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -126,19 +131,21 @@ fun SystemStatsWidget(stats: SystemStats) {
             ) {
                 Text(text = "STORAGE (/Data)", fontSize = 11.sp, color = Graphite400, fontWeight = FontWeight.Bold)
                 Text(
-                    text = "${stats.diskFreeGB.toInt()} GB Free",
-                    fontSize = 14.sp,
+                    text = "$diskAvail Free",
+                    fontSize = 13.sp,
                     color = Graphite100,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${stats.diskTotalGB.toInt()} GB Total",
+                    text = "$diskTotal Total",
                     fontSize = 11.sp,
                     color = Graphite400
                 )
             }
 
             // Network I/O
+            val netDown = stats.network?.downSpeed ?: "0 KB/s"
+            val netUp = stats.network?.upSpeed ?: "0 KB/s"
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -150,15 +157,15 @@ fun SystemStatsWidget(stats: SystemStats) {
             ) {
                 Text(text = "NETWORK SPEED", fontSize = 11.sp, color = Graphite400, fontWeight = FontWeight.Bold)
                 Text(
-                    text = "⇓ ${stats.netDownloadSpeed}",
-                    fontSize = 13.sp,
+                    text = "⇓ $netDown",
+                    fontSize = 12.sp,
                     color = EmeraldGreen,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "⇑ ${stats.netUploadSpeed}",
-                    fontSize = 13.sp,
+                    text = "⇑ $netUp",
+                    fontSize = 12.sp,
                     color = Graphite300,
                     fontFamily = FontFamily.Monospace
                 )

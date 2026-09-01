@@ -39,21 +39,37 @@ data class AddUserRequest(
 )
 
 // --- System Telemetry Models ---
-data class SystemStatsResponse(
-    val success: Boolean,
-    val stats: SystemStats?
+data class SystemStats(
+    val cpu: CpuStat? = null,
+    val memory: MemoryStat? = null,
+    val disk: DiskStat? = null,
+    val network: NetworkStat? = null
 )
 
-data class SystemStats(
-    val cpuPercent: Float = 0f,
-    val ramUsedPercent: Float = 0f,
-    val ramUsedMB: Long = 0,
-    val ramTotalMB: Long = 0,
-    val diskFreeGB: Float = 0f,
-    val diskTotalGB: Float = 0f,
-    val diskUsedPercent: Float = 0f,
-    val netDownloadSpeed: String = "0 KB/s",
-    val netUploadSpeed: String = "0 KB/s"
+data class CpuStat(
+    val percent: Float = 0f,
+    val cores: Int = 4,
+    val temp: Float = 0f,
+    val loadAvg: String = "0.00"
+)
+
+data class MemoryStat(
+    val total: String = "--",
+    val used: String = "--",
+    val free: String = "--",
+    val percent: Int = 0
+)
+
+data class DiskStat(
+    val size: String = "--",
+    val used: String = "--",
+    val avail: String = "--",
+    val percent: Int = 0
+)
+
+data class NetworkStat(
+    val downSpeed: String = "0 KB/s",
+    val upSpeed: String = "0 KB/s"
 )
 
 // --- Stream Catalog Models ---
