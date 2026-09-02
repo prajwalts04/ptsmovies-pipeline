@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
 import com.pts.suite.data.api.DownloadTask
 import com.pts.suite.data.api.RetrofitClient
 import com.pts.suite.ui.theme.*
