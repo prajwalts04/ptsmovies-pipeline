@@ -18,16 +18,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.pts.suite.data.api.SystemStats
 import com.pts.suite.data.api.UserInfo
 import com.pts.suite.ui.theme.*
 
 @Composable
 fun TopBar(
     user: UserInfo?,
+    stats: SystemStats? = null,
     onOpenDrawer: () -> Unit,
     onOpenProfile: () -> Unit
 ) {
@@ -36,16 +39,19 @@ fun TopBar(
             .fillMaxWidth()
             .height(56.dp)
             .background(PitchBlack)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         // Left: 3-line hamburger menu + PTS Branding Lockup
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            IconButton(onClick = onOpenDrawer) {
+            IconButton(
+                onClick = onOpenDrawer,
+                modifier = Modifier.size(36.dp)
+            ) {
                 Icon(
                     imageVector = Icons.Default.Menu,
                     contentDescription = "Main Navigation Menu",
@@ -61,12 +67,51 @@ fun TopBar(
             )
 
             Text(
-                text = "PTS SUITE",
+                text = "PTS",
                 color = Graphite100,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp
             )
+        }
+
+        // Middle: Live System Telemetry Badge
+        if (stats?.cpu != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DarkSurfaceElevated)
+                    .border(1.dp, SketchBorder, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(EmeraldGreen)
+                )
+                Text(
+                    text = "${stats.cpu.percent.toInt()}% CPU",
+                    color = EmeraldGreen,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "•",
+                    color = Graphite400,
+                    fontSize = 10.sp
+                )
+                Text(
+                    text = "${stats.memory?.percent ?: 0}% RAM",
+                    color = Graphite200,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
         }
 
         // Right: Profile Avatar & Username
@@ -76,23 +121,16 @@ fun TopBar(
                 .background(DarkSurface)
                 .border(1.dp, SketchBorder, RoundedCornerShape(20.dp))
                 .clickable { onOpenProfile() }
-                .padding(horizontal = 10.dp, vertical = 5.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Live Status Dot
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(EmeraldGreen)
-            )
-
             Text(
                 text = user?.username ?: "User",
                 color = Graphite100,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
             )
 
             // Profile Picture from local storage or cloud
@@ -101,7 +139,7 @@ fun TopBar(
                     .size(26.dp)
                     .clip(CircleShape)
                     .background(Graphite800)
-                    .border(1.dp, SketchBorder, CircleShape),
+                    .border(1.dp, EmeraldGreen, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 if (!user?.avatarUrl.isNullOrEmpty()) {
@@ -115,7 +153,7 @@ fun TopBar(
                     Icon(
                         imageVector = Icons.Default.Person,
                         contentDescription = null,
-                        tint = Graphite300,
+                        tint = Graphite200,
                         modifier = Modifier.size(16.dp)
                     )
                 }

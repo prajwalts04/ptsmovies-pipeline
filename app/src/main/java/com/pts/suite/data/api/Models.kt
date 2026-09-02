@@ -156,14 +156,25 @@ data class DispatchLinkRequest(
 )
 
 // --- Files App Models ---
+data class FilesListResponse(
+    val success: Boolean = true,
+    val currentPath: String = "/Data",
+    val parentPath: String? = null,
+    val itemsCount: Int = 0,
+    val items: List<FileItem> = emptyList()
+)
+
 data class FileItem(
-    val name: String,
-    val path: String,
-    val isDirectory: Boolean,
+    val name: String = "",
+    val path: String = "",
+    val isDir: Boolean = false,
     val size: Long = 0,
-    val sizeFormatted: String = "",
-    val mtime: Long = 0,
-    val extension: String = ""
+    val formattedSize: String = "--",
+    val mtime: String = "",
+    val permissions: String = "",
+    val ext: String = "",
+    val isVideo: Boolean = false,
+    val isImage: Boolean = false
 )
 
 // --- Vault Digital Wallet & Notes Models ---

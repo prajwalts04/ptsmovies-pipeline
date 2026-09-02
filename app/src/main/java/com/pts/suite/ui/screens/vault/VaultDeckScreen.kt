@@ -4,12 +4,18 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -29,8 +35,6 @@ import com.pts.suite.data.api.RetrofitClient
 import com.pts.suite.data.api.VaultCategory
 import com.pts.suite.data.api.VaultDocument
 import com.pts.suite.data.api.VaultNote
-import com.pts.suite.ui.components.DockTabItem
-import com.pts.suite.ui.components.DynamicBottomDock
 import com.pts.suite.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -43,250 +47,394 @@ fun VaultDeckScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var selectedTab by remember { mutableStateOf("wallet") } // "wallet", "notes", "categories"
+    var selectedTab by remember { mutableStateOf("deck") } // "deck", "grid", "notes"
     var expandedDocId by remember { mutableStateOf<Int?>(null) }
-    var viewMode by remember { mutableStateOf("deck") } // "deck" (stacked) vs "grid"
+    var showAddNoteDialog by remember { mutableStateOf(false) }
+    var noteTitle by remember { mutableStateOf("") }
+    var noteContent by remember { mutableStateOf("") }
 
-    val vaultTabs = listOf(
-        DockTabItem("wallet", "Cards & Wallet", Icons.Default.CreditCard),
-        DockTabItem("notes", "Secure Notes", Icons.Default.Lock),
-        DockTabItem("categories", "Categories", Icons.Default.Folder)
-    )
-
-    Scaffold(
-        bottomBar = {
-            DynamicBottomDock(
-                tabs = vaultTabs,
-                selectedTabId = selectedTab,
-                onTabSelected = { selectedTab = it }
-            )
-        },
-        containerColor = PitchBlack
-    ) { padding ->
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PitchBlack)
+            .padding(horizontal = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Top Sub-Navigation Tabs: Wallet Deck, Grid View, Secure Notes
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header with Stacking Deck / Grid Switcher
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = when (selectedTab) {
-                        "wallet" -> "DIGITAL WALLET & PASSES"
-                        "notes" -> "CONFIDENTIAL NOTES"
-                        else -> "DOCUMENT CATEGORIES"
-                    },
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Graphite100,
-                    letterSpacing = 1.sp
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val tabs = listOf(
+                    "deck" to "Deck View",
+                    "grid" to "Grid (${documents.size})",
+                    "notes" to "Notes (${notes.size})"
                 )
-
-                if (selectedTab == "wallet") {
-                    Row(
+                tabs.forEach { (tabId, label) ->
+                    val isSelected = selectedTab == tabId
+                    Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(DarkSurface)
-                            .border(1.dp, SketchBorder, RoundedCornerShape(6.dp))
-                            .padding(2.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isSelected) EmeraldGreen else DarkSurface)
+                            .border(1.dp, if (isSelected) EmeraldGreen else SketchBorder, RoundedCornerShape(20.dp))
+                            .clickable { selectedTab = tabId }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        IconButton(onClick = { viewMode = "deck" }, modifier = Modifier.size(30.dp)) {
-                            Icon(Icons.Default.ViewCarousel, contentDescription = "Deck", tint = if (viewMode == "deck") EmeraldGreen else Graphite400, modifier = Modifier.size(16.dp))
-                        }
-                        IconButton(onClick = { viewMode = "grid" }, modifier = Modifier.size(30.dp)) {
-                            Icon(Icons.Default.GridView, contentDescription = "Grid", tint = if (viewMode == "grid") EmeraldGreen else Graphite400, modifier = Modifier.size(16.dp))
-                        }
+                        Text(
+                            text = label,
+                            color = if (isSelected) PitchBlack else Graphite200,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
 
-            // Tab 1: Cards & Wallet (Apple/Google Wallet Stacking Mode)
-            if (selectedTab == "wallet") {
+            IconButton(onClick = onRefresh) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = EmeraldGreen)
+            }
+        }
+
+        when (selectedTab) {
+            "deck" -> {
+                // Apple / Google Wallet Interactive Stacked Cards Deck
                 if (documents.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No cards or passes in vault yet.", color = Graphite400, fontSize = 13.sp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(DarkSurface)
+                            .border(1.dp, SketchBorder, RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.CreditCard, contentDescription = null, tint = Graphite400, modifier = Modifier.size(40.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("No digital wallet cards added yet", color = Graphite300, fontSize = 13.sp)
+                        }
                     }
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = if (viewMode == "deck") Arrangement.spacedBy((-45).dp) else Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy((-140).dp),
+                        contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
                     ) {
-                        items(documents) { doc ->
+                        itemsIndexed(documents, key = { _, doc -> doc.id }) { index, doc ->
                             val isExpanded = expandedDocId == doc.id
+                            val elevationOffset by animateDpAsState(
+                                targetValue = if (isExpanded) 12.dp else 0.dp,
+                                animationSpec = spring()
+                            )
 
-                            WalletPassCard(
-                                doc = doc,
-                                isExpanded = isExpanded,
-                                onClick = { expandedDocId = if (isExpanded) null else doc.id },
-                                onCopyNumber = { num ->
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Card Number", num))
-                                    Toast.makeText(context, "Copied to clipboard!", Toast.LENGTH_SHORT).show()
-                                },
-                                onDelete = {
-                                    scope.launch {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .offset(y = if (isExpanded) (-20).dp else 0.dp)
+                                    .padding(vertical = elevationOffset)
+                                    .clickable {
+                                        expandedDocId = if (isExpanded) null else doc.id
+                                    }
+                            ) {
+                                DigitalWalletCardView(
+                                    doc = doc,
+                                    isExpanded = isExpanded,
+                                    onCopyNumber = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Card Number", doc.docNumber))
+                                        Toast.makeText(context, "Copied: ${doc.docNumber}", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onDelete = {
+                                        scope.launch {
+                                            try {
+                                                RetrofitClient.getService(context).deleteVaultDocument(doc.id)
+                                                onRefresh()
+                                                Toast.makeText(context, "Card deleted", Toast.LENGTH_SHORT).show()
+                                            } catch (e: Exception) {}
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            "grid" -> {
+                // Responsive Grid View of all passes
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 160.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(documents) { doc ->
+                        DigitalWalletCardView(
+                            doc = doc,
+                            isExpanded = true,
+                            onCopyNumber = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Card Number", doc.docNumber))
+                                Toast.makeText(context, "Copied: ${doc.docNumber}", Toast.LENGTH_SHORT).show()
+                            },
+                            onDelete = {
+                                scope.launch {
+                                    try {
                                         RetrofitClient.getService(context).deleteVaultDocument(doc.id)
                                         onRefresh()
+                                    } catch (e: Exception) {}
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            "notes" -> {
+                // Secure Notes Section
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "CONFIDENTIAL NOTES", color = Graphite300, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                    Button(
+                        onClick = { showAddNoteDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Text("+ ADD NOTE", color = PitchBlack, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (notes.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurface)
+                            .border(1.dp, SketchBorder, RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No confidential notes stored", color = Graphite400, fontSize = 13.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(notes) { note ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(DarkSurface)
+                                    .border(1.dp, SketchBorder, RoundedCornerShape(8.dp))
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = note.title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Graphite100)
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    RetrofitClient.getService(context).deleteVaultNote(note.id)
+                                                    onRefresh()
+                                                } catch (e: Exception) {}
+                                            }
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = DangerRed, modifier = Modifier.size(16.dp))
                                     }
                                 }
-                            )
-                        }
-                    }
-                }
-            } else if (selectedTab == "notes") {
-                // Tab 2: Secure Notes
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(notes) { note ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(DarkSurface)
-                                .border(1.dp, SketchBorder, RoundedCornerShape(8.dp))
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(text = note.title, color = Graphite100, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text(text = note.content, color = Graphite300, fontSize = 12.sp)
-                            Text(text = note.updatedAt ?: "", color = Graphite400, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        }
-                    }
-                }
-            } else {
-                // Tab 3: Categories
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(categories) { cat ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(DarkSurface)
-                                .border(1.dp, SketchBorder, RoundedCornerShape(6.dp))
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Folder, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(text = cat.name, color = Graphite100, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(text = note.content, fontSize = 12.sp, color = Graphite300)
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+    // Add Note Modal Dialog
+    if (showAddNoteDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddNoteDialog = false },
+            title = { Text("New Confidential Note", color = Graphite100) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = noteTitle,
+                        onValueChange = { noteTitle = it },
+                        label = { Text("Title") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            unfocusedBorderColor = SketchBorder,
+                            focusedTextColor = Graphite100
+                        )
+                    )
+                    OutlinedTextField(
+                        value = noteContent,
+                        onValueChange = { noteContent = it },
+                        label = { Text("Content") },
+                        modifier = Modifier.height(100.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            unfocusedBorderColor = SketchBorder,
+                            focusedTextColor = Graphite100
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (noteTitle.isNotBlank()) {
+                            scope.launch {
+                                try {
+                                    RetrofitClient.getService(context).createVaultNote(
+                                        mapOf("title" to noteTitle, "content" to noteContent)
+                                    )
+                                    showAddNoteDialog = false
+                                    noteTitle = ""
+                                    noteContent = ""
+                                    onRefresh()
+                                    Toast.makeText(context, "Note saved", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {}
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
+                ) {
+                    Text("SAVE", color = PitchBlack, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddNoteDialog = false }) {
+                    Text("CANCEL", color = Graphite300)
+                }
+            },
+            containerColor = DarkSurfaceElevated
+        )
+    }
 }
 
 @Composable
-fun WalletPassCard(
+fun DigitalWalletCardView(
     doc: VaultDocument,
     isExpanded: Boolean,
-    onClick: () -> Unit,
-    onCopyNumber: (String) -> Unit,
+    onCopyNumber: () -> Unit,
     onDelete: () -> Unit
 ) {
-    // Generate realistic card gradient
-    val cardGradient = when (doc.docType) {
-        "passport", "id_card" -> Brush.linearGradient(listOf(Color(0xFF1E293B), Color(0xFF0F172A)))
-        "license" -> Brush.linearGradient(listOf(Color(0xFF14532D), Color(0xFF052E16)))
-        "finance", "bank_card" -> Brush.linearGradient(listOf(Color(0xFF312E81), Color(0xFF1E1B4B)))
-        "medical" -> Brush.linearGradient(listOf(Color(0xFF881337), Color(0xFF4C0519)))
-        else -> Brush.linearGradient(listOf(Color(0xFF181822), Color(0xFF0C0C12)))
+    val gradientColors = when (doc.docType.lowercase()) {
+        "bank_card", "credit" -> listOf(Color(0xFF1E3A8A), Color(0xFF0F172A))
+        "id_card", "passport" -> listOf(Color(0xFF14532D), Color(0xFF022C22))
+        "driving_license" -> listOf(Color(0xFF78350F), Color(0xFF451A03))
+        "medical" -> listOf(Color(0xFF831843), Color(0xFF500724))
+        else -> listOf(Color(0xFF27272A), Color(0xFF09090B))
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
+            .height(if (isExpanded) 200.dp else 160.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(cardGradient)
-            .border(1.2.dp, SketchBorderActive, RoundedCornerShape(14.dp))
-            .clickable { onClick() }
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .background(Brush.linearGradient(gradientColors))
+            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
+            .padding(16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = doc.categoryName ?: doc.docType.uppercase(),
-                color = EmeraldGreen,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 1.sp
-            )
-
-            Text(
-                text = doc.issuer.ifEmpty { "PTS VAULT" },
-                color = Graphite300,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Text(
-            text = doc.title,
-            color = Graphite100,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Black
-        )
-
-        if (doc.docNumber.isNotBlank()) {
+            // Card Issuer & Type
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = doc.docNumber,
-                    color = Graphite100,
-                    fontSize = 14.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp
+                    text = (doc.issuer.ifEmpty { doc.categoryName ?: "DIGITAL PASS" }).uppercase(),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White.copy(alpha = 0.8f),
+                    letterSpacing = 1.sp
                 )
 
-                IconButton(onClick = { onCopyNumber(doc.docNumber) }, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = Graphite300, modifier = Modifier.size(15.dp))
-                }
+                // Gold microchip badge
+                Box(
+                    modifier = Modifier
+                        .size(width = 30.dp, height = 22.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFFD97706))
+                        .border(0.5.dp, Color(0xFFFDE68A), RoundedCornerShape(4.dp))
+                )
             }
-        }
 
-        // Expanded Details (Holder name, Expiry, Delete)
-        if (isExpanded) {
-            Divider(color = Graphite800, thickness = 1.dp)
+            // Card Document Number with 1-Tap Copy
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable(onClick = onCopyNumber)
+            ) {
+                Text(
+                    text = doc.docNumber.ifEmpty { "•••• •••• •••• ••••" },
+                    fontSize = 17.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    letterSpacing = 2.sp
+                )
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy Number",
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            // Cardholder Name & Expiry
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
                 Column {
-                    Text(text = "HOLDER NAME", fontSize = 9.sp, color = Graphite400, fontWeight = FontWeight.Bold)
-                    Text(text = doc.holderName.ifEmpty { "N/A" }, fontSize = 12.sp, color = Graphite200, fontWeight = FontWeight.SemiBold)
+                    Text(text = "CARDHOLDER", fontSize = 8.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
+                    Text(
+                        text = doc.holderName.ifEmpty { doc.title }.uppercase(),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
                 }
 
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(text = "EXPIRY DATE", fontSize = 9.sp, color = Graphite400, fontWeight = FontWeight.Bold)
-                    Text(text = doc.expiryDate.ifEmpty { "Never" }, fontSize = 12.sp, color = GoldenYellow, fontWeight = FontWeight.SemiBold)
-                }
-            }
-
-            if (doc.extraInfo.isNotBlank()) {
-                Text(text = doc.extraInfo, color = Graphite300, fontSize = 11.sp)
-            }
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = DangerRed, modifier = Modifier.size(16.dp))
+                if (doc.expiryDate.isNotBlank()) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(text = "EXPIRES", fontSize = 8.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
+                        Text(
+                            text = doc.expiryDate,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }

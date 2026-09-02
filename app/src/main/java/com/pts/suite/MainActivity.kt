@@ -1,8 +1,6 @@
 package com.pts.suite
 
 import android.os.Bundle
-import android.webkit.CookieManager
-import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -17,8 +15,14 @@ import androidx.compose.ui.Modifier
 import com.pts.suite.data.api.*
 import com.pts.suite.ui.components.*
 import com.pts.suite.ui.screens.downloads.OfflineDownloadsScreen
+import com.pts.suite.ui.screens.files.FilesScreen
+import com.pts.suite.ui.screens.hub.HubQueueScreen
 import com.pts.suite.ui.screens.login.LoginScreen
 import com.pts.suite.ui.screens.profile.ProfileScreen
+import com.pts.suite.ui.screens.ssh.TerminalScreen
+import com.pts.suite.ui.screens.stream.StreamCatalogScreen
+import com.pts.suite.ui.screens.stream.WatchScreen
+import com.pts.suite.ui.screens.vault.VaultDeckScreen
 import com.pts.suite.ui.theme.PTSSuiteTheme
 import com.pts.suite.ui.theme.PitchBlack
 import com.pts.suite.updater.AppUpdater
@@ -37,42 +41,82 @@ class MainActivity : ComponentActivity() {
 
                 var authToken by remember { mutableStateOf(RetrofitClient.getAuthToken(this@MainActivity)) }
                 var currentUser by remember { mutableStateOf<UserInfo?>(null) }
-                var currentDestination by remember { mutableStateOf(AppDestination.HUB) }
+                var currentDestination by remember { mutableStateOf(AppDestination.STREAM) }
 
                 // Live Telemetry Stats State
                 var systemStats by remember { mutableStateOf(SystemStats()) }
 
-                // Map of WebViews per app to maintain state and fast switching
-                val webViews = remember { mutableMapOf<AppDestination, WebView>() }
+                // Media & Library State
+                var movies by remember { mutableStateOf<List<MovieItem>>(emptyList()) }
+                var series by remember { mutableStateOf<List<SeriesItem>>(emptyList()) }
+                var watchlist by remember { mutableStateOf<List<WatchlistItem>>(emptyList()) }
+                var selectedMovie by remember { mutableStateOf<MovieItem?>(null) }
+                var selectedSeries by remember { mutableStateOf<SeriesItem?>(null) }
+
+                // Hub Queue State
+                var downloadTasks by remember { mutableStateOf<List<DownloadTask>>(emptyList()) }
+
+                // Vault State
+                var vaultDocuments by remember { mutableStateOf<List<VaultDocument>>(emptyList()) }
+                var vaultNotes by remember { mutableStateOf<List<VaultNote>>(emptyList()) }
+                var vaultCategories by remember { mutableStateOf<List<VaultCategory>>(emptyList()) }
 
                 // Back press tracking for double-tap to exit
                 var lastBackPressTime by remember { mutableLongStateOf(0L) }
 
-                // In-App Update Banner State
-                var updateManifest by remember { mutableStateOf<UpdateManifest?>(null) }
+                // Load all initial data once logged in
+                fun loadInitialData() {
+                    scope.launch {
+                        try {
+                            val service = RetrofitClient.getService(this@MainActivity)
 
-                // Helper to inject SSO cookie into CookieManager for all PTS subdomains
-                fun injectSsoCookie(token: String?) {
-                    if (token.isNullOrEmpty()) return
-                    val cookieManager = CookieManager.getInstance()
-                    cookieManager.setAcceptCookie(true)
-                    val domains = listOf(
-                        "https://hub.ptsmovies.online",
-                        "https://stream.ptsmovies.online",
-                        "https://files.ptsmovies.online",
-                        "https://vault.ptsmovies.online",
-                        "https://ssh.ptsmovies.online"
-                    )
-                    domains.forEach { domainUrl ->
-                        cookieManager.setCookie(domainUrl, "pts_token=$token; Domain=.ptsmovies.online; Path=/; Secure; SameSite=Lax")
+                            // 1. Profile
+                            launch {
+                                try {
+                                    val profileRes = service.getProfile()
+                                    if (profileRes.isSuccessful) currentUser = profileRes.body()?.user
+                                } catch (e: Exception) {}
+                            }
+
+                            // 2. Stream Catalog
+                            launch {
+                                try {
+                                    val libRes = service.getMediaLibrary()
+                                    if (libRes.isSuccessful && libRes.body() != null) {
+                                        movies = libRes.body()!!.movies
+                                        series = libRes.body()!!.series
+                                        watchlist = libRes.body()!!.watchlist
+                                    }
+                                } catch (e: Exception) {}
+                            }
+
+                            // 3. Downloads Queue
+                            launch {
+                                try {
+                                    val queueRes = service.getDownloadsQueue()
+                                    if (queueRes.isSuccessful) downloadTasks = queueRes.body()?.downloads ?: emptyList()
+                                } catch (e: Exception) {}
+                            }
+
+                            // 4. Vault
+                            launch {
+                                try {
+                                    val docsRes = service.getVaultDocuments()
+                                    if (docsRes.isSuccessful) vaultDocuments = docsRes.body() ?: emptyList()
+                                    val notesRes = service.getVaultNotes()
+                                    if (notesRes.isSuccessful) vaultNotes = notesRes.body() ?: emptyList()
+                                    val catsRes = service.getVaultCategories()
+                                    if (catsRes.isSuccessful) vaultCategories = catsRes.body() ?: emptyList()
+                                } catch (e: Exception) {}
+                            }
+                        } catch (e: Exception) {}
                     }
-                    cookieManager.flush()
                 }
 
-                // Poll live telemetry stats every 3 seconds
+                // Poll live telemetry stats and downloads queue every 3.5 seconds
                 LaunchedEffect(authToken) {
                     if (!authToken.isNullOrEmpty()) {
-                        injectSsoCookie(authToken)
+                        loadInitialData()
                         while (true) {
                             try {
                                 val service = RetrofitClient.getService(this@MainActivity)
@@ -80,8 +124,12 @@ class MainActivity : ComponentActivity() {
                                 if (statsRes.isSuccessful && statsRes.body() != null) {
                                     systemStats = statsRes.body()!!
                                 }
+                                if (currentDestination == AppDestination.HUB) {
+                                    val queueRes = service.getDownloadsQueue()
+                                    if (queueRes.isSuccessful) downloadTasks = queueRes.body()?.downloads ?: emptyList()
+                                }
                             } catch (e: Exception) {}
-                            delay(3000)
+                            delay(3500)
                         }
                     }
                 }
@@ -89,23 +137,21 @@ class MainActivity : ComponentActivity() {
                 // Check for updates on startup
                 LaunchedEffect(Unit) {
                     try {
-                        val manifest = AppUpdater.checkForUpdate(this@MainActivity)
-                        if (manifest != null) {
-                            updateManifest = manifest
-                        }
+                        AppUpdater.checkForUpdate(this@MainActivity)
                     } catch (e: Exception) {}
                 }
 
                 // ── SYSTEM BACK-GESTURE HANDLING ──
                 // Prevents accidental app exit when swiping back!
-                val currentWebView = webViews[currentDestination]
                 BackHandler(enabled = true) {
-                    if (drawerState.isOpen) {
+                    if (selectedMovie != null || selectedSeries != null) {
+                        // Return to Stream Catalog
+                        selectedMovie = null
+                        selectedSeries = null
+                    } else if (drawerState.isOpen) {
                         scope.launch { drawerState.close() }
-                    } else if (currentWebView?.canGoBack() == true) {
-                        currentWebView.goBack()
-                    } else if (currentDestination != AppDestination.HUB) {
-                        currentDestination = AppDestination.HUB
+                    } else if (currentDestination != AppDestination.STREAM) {
+                        currentDestination = AppDestination.STREAM
                     } else {
                         val now = System.currentTimeMillis()
                         if (now - lastBackPressTime < 2000) {
@@ -133,7 +179,7 @@ class MainActivity : ComponentActivity() {
                                         RetrofitClient.setAuthToken(this@MainActivity, token)
                                         authToken = token
                                         currentUser = res.body()?.user
-                                        injectSsoCookie(token)
+                                        loadInitialData()
                                     } else {
                                         Toast.makeText(this@MainActivity, res.body()?.error ?: "Login failed", Toast.LENGTH_SHORT).show()
                                     }
@@ -148,7 +194,7 @@ class MainActivity : ComponentActivity() {
                         errorMessage = null
                     )
                 } else {
-                    // Main App Shell with Navigation Drawer, Top Bar, and Dynamic Bottom Dock
+                    // Main Native App Shell
                     ModalNavigationDrawer(
                         drawerState = drawerState,
                         drawerContent = {
@@ -157,6 +203,8 @@ class MainActivity : ComponentActivity() {
                                 stats = systemStats,
                                 currentDestination = currentDestination,
                                 onNavigate = { destination ->
+                                    selectedMovie = null
+                                    selectedSeries = null
                                     currentDestination = destination
                                 },
                                 onCloseDrawer = {
@@ -167,80 +215,48 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Scaffold(
                             topBar = {
-                                TopBar(
-                                    user = currentUser,
-                                    onOpenDrawer = {
-                                        scope.launch { drawerState.open() }
-                                    },
-                                    onOpenProfile = {
-                                        currentDestination = AppDestination.PROFILE
-                                    }
-                                )
+                                if (selectedMovie == null && selectedSeries == null) {
+                                    TopBar(
+                                        user = currentUser,
+                                        stats = systemStats,
+                                        onOpenDrawer = { scope.launch { drawerState.open() } },
+                                        onOpenProfile = { currentDestination = AppDestination.PROFILE }
+                                    )
+                                }
                             },
                             bottomBar = {
-                                // Dynamic bottom dock tailored for each active app
-                                when (currentDestination) {
-                                    AppDestination.STREAM -> {
-                                        DynamicBottomDock(
-                                            tabs = listOf(
-                                                DockTabItem("all", "All", Icons.Default.Layers),
-                                                DockTabItem("movies", "Movies", Icons.Default.Movie),
-                                                DockTabItem("series", "Series", Icons.Default.Tv),
-                                                DockTabItem("watchlist", "Watchlist", Icons.Default.Bookmark)
-                                            ),
-                                            selectedTabId = "all",
-                                            onTabSelected = { tabId ->
-                                                webViews[AppDestination.STREAM]?.evaluateJavascript(
-                                                    "window.location.hash = '#$tabId'; if (typeof setActiveTab === 'function') setActiveTab('$tabId');",
-                                                    null
-                                                )
+                                // SINGLE Native Bottom Dock (only visible when not watching video)
+                                if (selectedMovie == null && selectedSeries == null && currentDestination != AppDestination.PROFILE) {
+                                    val mainTabs = listOf(
+                                        DockTabItem("stream", "Stream", Icons.Default.Movie),
+                                        DockTabItem("hub", "Hub", Icons.Default.Bolt),
+                                        DockTabItem("files", "Files", Icons.Default.Folder),
+                                        DockTabItem("vault", "Vault", Icons.Default.CreditCard),
+                                        DockTabItem("terminal", "Terminal", Icons.Default.Terminal)
+                                    )
+
+                                    val activeTabId = when (currentDestination) {
+                                        AppDestination.STREAM -> "stream"
+                                        AppDestination.HUB -> "hub"
+                                        AppDestination.FILES -> "files"
+                                        AppDestination.VAULT -> "vault"
+                                        AppDestination.TERMINAL -> "terminal"
+                                        else -> "stream"
+                                    }
+
+                                    DynamicBottomDock(
+                                        tabs = mainTabs,
+                                        selectedTabId = activeTabId,
+                                        onTabSelected = { tabId ->
+                                            when (tabId) {
+                                                "stream" -> currentDestination = AppDestination.STREAM
+                                                "hub" -> currentDestination = AppDestination.HUB
+                                                "files" -> currentDestination = AppDestination.FILES
+                                                "vault" -> currentDestination = AppDestination.VAULT
+                                                "terminal" -> currentDestination = AppDestination.TERMINAL
                                             }
-                                        )
-                                    }
-                                    AppDestination.HUB -> {
-                                        DynamicBottomDock(
-                                            tabs = listOf(
-                                                DockTabItem("dashboard", "Dashboard", Icons.Default.Dashboard),
-                                                DockTabItem("downloads", "Downloads", Icons.Default.Bolt),
-                                                DockTabItem("settings", "Settings", Icons.Default.Settings)
-                                            ),
-                                            selectedTabId = "dashboard",
-                                            onTabSelected = { tabId ->
-                                                webViews[AppDestination.HUB]?.evaluateJavascript(
-                                                    "window.location.hash = '#$tabId'; if (typeof setActiveTab === 'function') setActiveTab('$tabId');",
-                                                    null
-                                                )
-                                            }
-                                        )
-                                    }
-                                    AppDestination.FILES -> {
-                                        DynamicBottomDock(
-                                            tabs = listOf(
-                                                DockTabItem("browse", "Browse", Icons.Default.Folder),
-                                                DockTabItem("recent", "Recent", Icons.Default.Schedule),
-                                                DockTabItem("uploads", "Uploads", Icons.Default.UploadFile)
-                                            ),
-                                            selectedTabId = "browse",
-                                            onTabSelected = { }
-                                        )
-                                    }
-                                    AppDestination.VAULT -> {
-                                        DynamicBottomDock(
-                                            tabs = listOf(
-                                                DockTabItem("wallet", "Wallet Deck", Icons.Default.CreditCard),
-                                                DockTabItem("notes", "Notes", Icons.Default.Lock),
-                                                DockTabItem("categories", "Categories", Icons.Default.Folder)
-                                            ),
-                                            selectedTabId = "wallet",
-                                            onTabSelected = { tabId ->
-                                                webViews[AppDestination.VAULT]?.evaluateJavascript(
-                                                    "if (typeof switchTab === 'function') switchTab('$tabId');",
-                                                    null
-                                                )
-                                            }
-                                        )
-                                    }
-                                    else -> {}
+                                        }
+                                    )
                                 }
                             },
                             containerColor = PitchBlack
@@ -252,47 +268,79 @@ class MainActivity : ComponentActivity() {
                                     .background(PitchBlack)
                             ) {
                                 when (currentDestination) {
-                                    AppDestination.HUB -> {
-                                        WebEngineView(
-                                            url = "https://hub.ptsmovies.online",
-                                            authToken = authToken,
-                                            onWebViewCreated = { webViews[AppDestination.HUB] = it }
-                                        )
-                                    }
                                     AppDestination.STREAM -> {
-                                        WebEngineView(
-                                            url = "https://stream.ptsmovies.online",
-                                            authToken = authToken,
-                                            onWebViewCreated = { webViews[AppDestination.STREAM] = it }
+                                        if (selectedMovie != null || selectedSeries != null) {
+                                            WatchScreen(
+                                                movie = selectedMovie,
+                                                series = selectedSeries,
+                                                onBack = {
+                                                    selectedMovie = null
+                                                    selectedSeries = null
+                                                }
+                                            )
+                                        } else {
+                                            StreamCatalogScreen(
+                                                movies = movies,
+                                                series = series,
+                                                watchlist = watchlist,
+                                                onSelectMovie = { selectedMovie = it },
+                                                onSelectSeries = { selectedSeries = it }
+                                            )
+                                        }
+                                    }
+
+                                    AppDestination.HUB -> {
+                                        HubQueueScreen(
+                                            tasks = downloadTasks,
+                                            onRefresh = {
+                                                scope.launch {
+                                                    try {
+                                                        val res = RetrofitClient.getService(this@MainActivity).getDownloadsQueue()
+                                                        if (res.isSuccessful) downloadTasks = res.body()?.downloads ?: emptyList()
+                                                    } catch (e: Exception) {}
+                                                }
+                                            }
                                         )
                                     }
+
                                     AppDestination.FILES -> {
-                                        WebEngineView(
-                                            url = "https://files.ptsmovies.online",
-                                            authToken = authToken,
-                                            onWebViewCreated = { webViews[AppDestination.FILES] = it }
+                                        FilesScreen(
+                                            onNavigateBack = { currentDestination = AppDestination.STREAM }
                                         )
                                     }
+
                                     AppDestination.VAULT -> {
-                                        WebEngineView(
-                                            url = "https://vault.ptsmovies.online",
-                                            authToken = authToken,
-                                            onWebViewCreated = { webViews[AppDestination.VAULT] = it }
+                                        VaultDeckScreen(
+                                            documents = vaultDocuments,
+                                            notes = vaultNotes,
+                                            categories = vaultCategories,
+                                            onRefresh = {
+                                                scope.launch {
+                                                    try {
+                                                        val service = RetrofitClient.getService(this@MainActivity)
+                                                        val docs = service.getVaultDocuments()
+                                                        if (docs.isSuccessful) vaultDocuments = docs.body() ?: emptyList()
+                                                        val notes = service.getVaultNotes()
+                                                        if (notes.isSuccessful) vaultNotes = notes.body() ?: emptyList()
+                                                    } catch (e: Exception) {}
+                                                }
+                                            }
                                         )
                                     }
+
                                     AppDestination.TERMINAL -> {
-                                        WebEngineView(
-                                            url = "https://ssh.ptsmovies.online",
-                                            authToken = authToken,
-                                            onWebViewCreated = { webViews[AppDestination.TERMINAL] = it }
+                                        TerminalScreen(
+                                            onBack = { currentDestination = AppDestination.STREAM }
                                         )
                                     }
+
                                     AppDestination.DOWNLOADS -> {
                                         OfflineDownloadsScreen(
                                             onPlayOfflineFile = { _, _ -> },
-                                            onBack = { currentDestination = AppDestination.HUB }
+                                            onBack = { currentDestination = AppDestination.STREAM }
                                         )
                                     }
+
                                     AppDestination.PROFILE -> {
                                         ProfileScreen(
                                             user = currentUser,
@@ -302,7 +350,7 @@ class MainActivity : ComponentActivity() {
                                                 authToken = null
                                                 currentUser = null
                                             },
-                                            onBack = { currentDestination = AppDestination.HUB }
+                                            onBack = { currentDestination = AppDestination.STREAM }
                                         )
                                     }
                                 }

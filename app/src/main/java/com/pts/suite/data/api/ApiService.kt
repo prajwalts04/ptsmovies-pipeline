@@ -49,11 +49,17 @@ interface ApiService {
     @GET("/api/downloads")
     suspend fun getDownloadsQueue(): Response<DownloadsQueueResponse>
 
-    @POST("/api/downloads/dispatch")
-    suspend fun dispatchLink(@Body req: DispatchLinkRequest): Response<Map<String, Any>>
+    @POST("/api/downloads/queue")
+    suspend fun queueDownload(@Body req: Map<String, Any>): Response<Map<String, Any>>
+
+    @POST("/api/downloads/{id}/retry")
+    suspend fun retryDownloadTask(@Path("id") taskId: String): Response<Map<String, Any>>
 
     @DELETE("/api/downloads/{id}")
     suspend fun cancelDownloadTask(@Path("id") taskId: String): Response<Map<String, Any>>
+
+    @POST("/api/downloads/clear-all")
+    suspend fun clearCompletedDownloads(): Response<Map<String, Any>>
 
     // --- Vault Digital Wallet & Notes ---
     @GET("/api/vault/stats")
@@ -94,8 +100,17 @@ interface ApiService {
     suspend fun getVaultCategories(): Response<List<VaultCategory>>
 
     // --- Files App ---
-    @GET("/api/files/browse")
-    suspend fun browseDirectory(@Query("path") path: String = "/Data"): Response<List<FileItem>>
+    @GET("/api/fs/list")
+    suspend fun browseDirectory(@Query("path") path: String = "/Data"): Response<FilesListResponse>
+
+    @POST("/api/fs/mkdir")
+    suspend fun createDirectory(@Body req: Map<String, String>): Response<Map<String, Any>>
+
+    @POST("/api/fs/delete")
+    suspend fun deleteFiles(@Body req: Map<String, List<String>>): Response<Map<String, Any>>
+
+    @POST("/api/fs/rename")
+    suspend fun renameFile(@Body req: Map<String, String>): Response<Map<String, Any>>
 
     // --- In-App Auto-Update Manifest ---
     @GET("/api/app/update-manifest.json")
