@@ -200,7 +200,9 @@ fun ProfileScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "PTS Suite v1.0.0 (Native)", fontSize = 13.sp, color = Graphite100, fontWeight = FontWeight.Bold)
+                    val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                    val versionName = packageInfo.versionName
+                    Text(text = "PTS Suite v$versionName (Native)", fontSize = 13.sp, color = Graphite100, fontWeight = FontWeight.Bold)
 
                     Button(
                         onClick = {

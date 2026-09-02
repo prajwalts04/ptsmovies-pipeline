@@ -2,14 +2,15 @@ package com.pts.suite.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val PitchBlack = Color(0xFF000000)
-val DarkSurface = Color(0xFF0C0C10)
-val DarkSurfaceElevated = Color(0xFF14141C)
-val SketchBorder = Color(0xFF22222E)
-val SketchBorderActive = Color(0xFF38384A)
+val PitchBlack = Color(0xFF040404)
+val DarkSurface = Color(0xFF0A0A0A)
+val DarkSurfaceElevated = Color(0xFF111113)
+val SketchBorder = Color(0xFF404048)
+val SketchBorderActive = Color(0xFF9E9EA8)
 
 val EmeraldGreen = Color(0xFF22C55E)
 val EmeraldGreenDark = Color(0xFF052E16)
+
 val GoldenYellow = Color(0xFFEAB308)
 val DangerRed = Color(0xFFEF4444)
 
