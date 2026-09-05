@@ -125,6 +125,8 @@ interface ApiService {
 
     @Multipart
     @POST("/api/vault/documents")
+    @POST("/api/vault/documents")
+    suspend fun createVaultDocument(@Body fields: Map<String, String>): Response<VaultDocument>
     suspend fun uploadVaultDocument(
         @Part("title") title: RequestBody,
         @Part("category_id") categoryId: RequestBody,

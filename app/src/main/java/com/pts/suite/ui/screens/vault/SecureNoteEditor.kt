@@ -381,7 +381,7 @@ private fun NoteEditDialog(
             ) {
                 OutlinedTextField(
                     value = title,
-                    onWalueChange = {
+                    onValueChange = {
                         title = it
                         error = null
                     },
