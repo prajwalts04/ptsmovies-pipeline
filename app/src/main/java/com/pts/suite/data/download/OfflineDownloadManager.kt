@@ -18,17 +18,21 @@ object OfflineDownloadManager {
     private val activeJobs = mutableMapOf<String, Job>()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private fun getBaseDownloadDir(): File {
+    private fun getBaseDownloadDir(context: Context): File {
         val publicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val ptsDir = File(publicDir, "PTS")
-        if (!ptsDir.exists()) ptsDir.mkdirs()
-        return ptsDir
+        val target = if (publicDir != null && publicDir.canWrite()) {
+            File(publicDir, "PTS")
+        } else {
+            File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "PTS")
+        }
+        if (!target.exists()) target.mkdirs()
+        return target
     }
 
     // Start or Restart Movie Download
     fun downloadMovie(context: Context, movie: MovieItem) {
         val db = AppDatabase.getDatabase(context)
-        val targetDir = File(getBaseDownloadDir(), "Movies")
+        val targetDir = File(getBaseDownloadDir(context), "Movies")
         if (!targetDir.exists()) targetDir.mkdirs()
 
         val safeTitle = movie.title.replace("[^a-zA-Z0-9.-]".toRegex(), "_")
@@ -54,7 +58,7 @@ object OfflineDownloadManager {
     fun downloadEpisode(context: Context, showTitle: String, posterUrl: String, episode: EpisodeItem) {
         val db = AppDatabase.getDatabase(context)
         val safeShow = showTitle.replace("[^a-zA-Z0-9.-]".toRegex(), "_")
-        val seriesDir = File(getBaseDownloadDir(), "Series/$safeShow/Season ${String.format("%02d", episode.season)}")
+        val seriesDir = File(getBaseDownloadDir(context), "Series/$safeShow/Season ${String.format("%02d", episode.season)}")
         if (!seriesDir.exists()) seriesDir.mkdirs()
 
         val safeEp = "${episode.epCode}_${episode.fileName.replace("[^a-zA-Z0-9.-]".toRegex(), "_")}"
@@ -87,7 +91,8 @@ object OfflineDownloadManager {
             try {
                 val service = RetrofitClient.getService(context)
                 val token = RetrofitClient.getAuthToken(context) ?: ""
-                val streamUrl = "/api/stream/video?file=${URLEncoder.encode(remotePath, "UTF-8")}&token=${URLEncoder.encode(token, "UTF-8")}"
+                val serverUrl = RetrofitClient.getServerUrl(context).trimEnd('/')
+                val streamUrl = "$serverUrl/api/stream/video?file=${URLEncoder.encode(remotePath, "UTF-8")}&token=${URLEncoder.encode(token, "UTF-8")}"
 
                 val response = service.downloadFileStream(streamUrl)
                 if (response.isSuccessful && response.body() != null) {
@@ -134,7 +139,13 @@ object OfflineDownloadManager {
     }
 
     private suspend fun markFailed(db: AppDatabase, downloadId: String) {
-        // Mark as failed in DB
+        try {
+            val downloads = db.mediaDao().getAllDownloads()
+            val target = downloads.find { it.id == downloadId }
+            if (target != null) {
+                db.mediaDao().insertOrUpdateDownload(target.copy(status = "FAILED"))
+            }
+        } catch (e: Exception) {}
     }
 
     // Cancel active download
@@ -164,7 +175,7 @@ object OfflineDownloadManager {
     fun deleteEntireSeries(context: Context, showTitle: String) {
         scope.launch {
             val safeShow = showTitle.replace("[^a-zA-Z0-9.-]".toRegex(), "_")
-            val seriesDir = File(getBaseDownloadDir(), "Series/$safeShow")
+            val seriesDir = File(getBaseDownloadDir(context), "Series/$safeShow")
             if (seriesDir.exists()) seriesDir.deleteRecursively()
             val db = AppDatabase.getDatabase(context)
             db.mediaDao().deleteEntireSeries(showTitle)

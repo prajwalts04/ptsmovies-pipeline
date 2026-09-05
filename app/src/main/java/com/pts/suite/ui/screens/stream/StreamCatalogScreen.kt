@@ -52,18 +52,21 @@ fun StreamCatalogScreen(
         set.toList()
     }
 
+    // Multi-layer fuzzy search filtered lists
     val filteredMovies = remember(movies, searchQuery, selectedGenre) {
-        movies.filter {
-            (selectedGenre == "All" || it.genres.contains(selectedGenre)) &&
-            (searchQuery.isBlank() || it.title.contains(searchQuery, ignoreCase = true))
-        }
+        FuzzySearch.filterMovies(movies, searchQuery, selectedGenre)
     }
 
     val filteredSeries = remember(series, searchQuery, selectedGenre) {
-        series.filter {
-            (selectedGenre == "All" || it.genres.contains(selectedGenre)) &&
-            (searchQuery.isBlank() || it.title.contains(searchQuery, ignoreCase = true))
-        }
+        FuzzySearch.filterSeries(series, searchQuery, selectedGenre)
+    }
+
+    val filteredWatchlist = remember(watchlist, searchQuery) {
+        FuzzySearch.filterWatchlist(watchlist, searchQuery)
+    }
+
+    val watchlistIds = remember(watchlist) {
+        watchlist.map { it.id }.toSet()
     }
 
     val featuredItem = remember(movies) { movies.firstOrNull() }
@@ -78,7 +81,7 @@ fun StreamCatalogScreen(
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search movies, TV shows...", color = Graphite400, fontSize = 13.sp) },
+            placeholder = { Text("Search movies, series, cast, acronyms...", color = Graphite400, fontSize = 13.sp) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Graphite300) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
@@ -109,7 +112,12 @@ fun StreamCatalogScreen(
                 .padding(bottom = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val tabs = listOf("all" to "All", "movies" to "Movies", "series" to "Series", "watchlist" to "Watchlist")
+            val tabs = listOf(
+                "all" to "All (${filteredMovies.size + filteredSeries.size})",
+                "movies" to "Movies (${filteredMovies.size})",
+                "series" to "Series (${filteredSeries.size})",
+                "watchlist" to "Watchlist (${watchlist.size})"
+            )
             tabs.forEach { (tabId, label) ->
                 val isSelected = selectedTab == tabId
                 Box(
@@ -118,196 +126,170 @@ fun StreamCatalogScreen(
                         .background(if (isSelected) EmeraldGreen else DarkSurface)
                         .border(1.dp, if (isSelected) EmeraldGreen else SketchBorder, RoundedCornerShape(20.dp))
                         .clickable { selectedTab = tabId }
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = label,
                         color = if (isSelected) PitchBlack else Graphite200,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                     )
                 }
             }
         }
 
-        // Horizontal Genre Filter Chips
-        if (allGenres.size > 1 && searchQuery.isEmpty()) {
+        // Genre filter row (when not on watchlist tab)
+        if (selectedTab != "watchlist" && allGenres.size > 1) {
             LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(allGenres) { genre ->
-                    val isGenSel = selectedGenre == genre
+                    val isSelected = selectedGenre == genre
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isGenSel) Graphite200 else DarkSurfaceElevated)
-                            .border(1.dp, if (isGenSel) Graphite100 else SketchBorder, RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isSelected) Graphite800 else DarkSurface)
+                            .border(1.dp, if (isSelected) EmeraldGreen else SketchBorder, RoundedCornerShape(6.dp))
                             .clickable { selectedGenre = genre }
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = genre,
-                            color = if (isGenSel) PitchBlack else Graphite400,
+                            color = if (isSelected) EmeraldGreen else Graphite300,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                         )
                     }
                 }
             }
         }
 
-        // Main Media Grid
+        // Media Grid Layout
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 150.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Optional Hero Banner on 'All' tab when not searching
+            // Featured Banner (on All tab when no search query)
             if (selectedTab == "all" && searchQuery.isBlank() && selectedGenre == "All" && featuredItem != null) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(1.dp, SketchBorder, RoundedCornerShape(12.dp))
-                            .clickable { onSelectMovie(featuredItem) }
-                    ) {
-                        AsyncImage(
-                            model = featuredItem.poster,
-                            contentDescription = featuredItem.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, PitchBlack.copy(alpha = 0.9f))
-                                    )
-                                )
-                        )
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(12.dp)
-                        ) {
-                            Text(
-                                text = "FEATURED MOVIE",
-                                color = EmeraldGreen,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                letterSpacing = 1.sp
-                            )
-                            Text(
-                                text = featuredItem.title,
-                                color = Graphite100,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "★ ${featuredItem.rating}",
-                                    color = Color(0xFFF59E0B),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(text = featuredItem.year ?: "", color = Graphite400, fontSize = 12.sp)
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(EmeraldGreen)
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text("PLAY", color = PitchBlack, fontSize = 11.sp, fontWeight = FontWeight.Black)
-                                }
-                            }
-                        }
-                    }
+                item(span = { GridItemSpan(2) }) {
+                    FeaturedBanner(
+                        movie = featuredItem,
+                        isInWatchlist = watchlistIds.contains(featuredItem.id),
+                        onPlay = { onSelectMovie(featuredItem) },
+                        onToggleWatchlist = { onToggleWatchlist(featuredItem.id, "Movie") }
+                    )
                 }
             }
 
-            // Grid Items
             when (selectedTab) {
                 "all" -> {
-                    items(filteredMovies) { movie ->
-                        MediaPosterCard(
-                            title = movie.title,
-                            year = movie.year,
-                            rating = movie.rating,
-                            poster = movie.poster,
-                            type = "Movie",
-                            onClick = { onSelectMovie(movie) }
-                        )
-                    }
-                    items(filteredSeries) { ser ->
-                        MediaPosterCard(
-                            title = ser.title,
-                            year = ser.year,
-                            rating = ser.rating,
-                            poster = ser.poster,
-                            type = "Series (${ser.totalEpisodes} eps)",
-                            onClick = { onSelectSeries(ser) }
-                        )
-                    }
-                }
-                "movies" -> {
-                    items(filteredMovies) { movie ->
-                        MediaPosterCard(
-                            title = movie.title,
-                            year = movie.year,
-                            rating = movie.rating,
-                            poster = movie.poster,
-                            type = "Movie",
-                            onClick = { onSelectMovie(movie) }
-                        )
-                    }
-                }
-                "series" -> {
-                    items(filteredSeries) { ser ->
-                        MediaPosterCard(
-                            title = ser.title,
-                            year = ser.year,
-                            rating = ser.rating,
-                            poster = ser.poster,
-                            type = "Series (${ser.totalEpisodes} eps)",
-                            onClick = { onSelectSeries(ser) }
-                        )
-                    }
-                }
-                "watchlist" -> {
-                    val watchIds = watchlist.map { it.title.lowercase() }
-                    val watchMovies = movies.filter { watchIds.contains(it.title.lowercase()) }
-                    val watchSeries = series.filter { watchIds.contains(it.title.lowercase()) }
+                    // Combine movies and series
+                    val combinedList = mutableListOf<Any>()
+                    combinedList.addAll(filteredMovies)
+                    combinedList.addAll(filteredSeries)
 
-                    items(watchMovies) { movie ->
-                        MediaPosterCard(
-                            title = movie.title,
-                            year = movie.year,
-                            rating = movie.rating,
-                            poster = movie.poster,
-                            type = "Movie",
-                            onClick = { onSelectMovie(movie) }
-                        )
+                    if (combinedList.isEmpty()) {
+                        item(span = { GridItemSpan(2) }) {
+                            EmptySearchState(query = searchQuery)
+                        }
+                    } else {
+                        items(filteredMovies, key = { "mov_${it.id}" }) { movie ->
+                            MovieCard(
+                                movie = movie,
+                                isInWatchlist = watchlistIds.contains(movie.id),
+                                onClick = { onSelectMovie(movie) },
+                                onToggleWatchlist = { onToggleWatchlist(movie.id, "Movie") }
+                            )
+                        }
+                        items(filteredSeries, key = { "ser_${it.id}" }) { show ->
+                            SeriesCard(
+                                series = show,
+                                isInWatchlist = watchlistIds.contains(show.id),
+                                onClick = { onSelectSeries(show) },
+                                onToggleWatchlist = { onToggleWatchlist(show.id, "Series") }
+                            )
+                        }
                     }
-                    items(watchSeries) { ser ->
-                        MediaPosterCard(
-                            title = ser.title,
-                            year = ser.year,
-                            rating = ser.rating,
-                            poster = ser.poster,
-                            type = "Series",
-                            onClick = { onSelectSeries(ser) }
-                        )
+                }
+
+                "movies" -> {
+                    if (filteredMovies.isEmpty()) {
+                        item(span = { GridItemSpan(2) }) {
+                            EmptySearchState(query = searchQuery)
+                        }
+                    } else {
+                        items(filteredMovies, key = { it.id }) { movie ->
+                            MovieCard(
+                                movie = movie,
+                                isInWatchlist = watchlistIds.contains(movie.id),
+                                onClick = { onSelectMovie(movie) },
+                                onToggleWatchlist = { onToggleWatchlist(movie.id, "Movie") }
+                            )
+                        }
+                    }
+                }
+
+                "series" -> {
+                    if (filteredSeries.isEmpty()) {
+                        item(span = { GridItemSpan(2) }) {
+                            EmptySearchState(query = searchQuery)
+                        }
+                    } else {
+                        items(filteredSeries, key = { it.id }) { show ->
+                            SeriesCard(
+                                series = show,
+                                isInWatchlist = watchlistIds.contains(show.id),
+                                onClick = { onSelectSeries(show) },
+                                onToggleWatchlist = { onToggleWatchlist(show.id, "Series") }
+                            )
+                        }
+                    }
+                }
+
+                "watchlist" -> {
+                    if (filteredWatchlist.isEmpty()) {
+                        item(span = { GridItemSpan(2) }) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Default.BookmarkBorder,
+                                        contentDescription = null,
+                                        tint = Graphite400,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text("Your watchlist is empty", color = Graphite300, fontSize = 14.sp)
+                                    Text("Bookmark movies and series to watch later", color = Graphite400, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    } else {
+                        items(filteredWatchlist, key = { it.id }) { item ->
+                            WatchlistCard(
+                                item = item,
+                                onClick = {
+                                    if (item.type.equals("Series", ignoreCase = true)) {
+                                        val targetSeries = series.find { it.id == item.id || it.title == item.title }
+                                        if (targetSeries != null) onSelectSeries(targetSeries)
+                                    } else {
+                                        val targetMovie = movies.find { it.id == item.id || it.title == item.title }
+                                        if (targetMovie != null) onSelectMovie(targetMovie)
+                                    }
+                                },
+                                onRemove = { onToggleWatchlist(item.id, item.type) }
+                            )
+                        }
                     }
                 }
             }
@@ -316,102 +298,418 @@ fun StreamCatalogScreen(
 }
 
 @Composable
-fun MediaPosterCard(
-    title: String,
-    year: String?,
-    rating: String?,
-    poster: String?,
-    type: String,
-    onClick: () -> Unit
+private fun FeaturedBanner(
+    movie: MovieItem,
+    isInWatchlist: Boolean,
+    onPlay: () -> Unit,
+    onToggleWatchlist: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.5.dp, EmeraldGreen.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+            .clickable { onPlay() }
+    ) {
+        AsyncImage(
+            model = movie.poster,
+            contentDescription = movie.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Gradient dark overlay
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, PitchBlack.copy(alpha = 0.95f)),
+                        startY = 60f
+                    )
+                )
+        )
+
+        // Content
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = EmeraldGreen
+                ) {
+                    Text(
+                        text = "FEATURED",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PitchBlack,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+
+                if (!movie.year.isNullOrBlank()) {
+                    Text(text = movie.year, color = Graphite300, fontSize = 11.sp)
+                }
+
+                if (!movie.rating.isNullOrBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Star, contentDescription = null, tint = GoldenYellow, modifier = Modifier.size(12.dp))
+                        Text(text = " ${movie.rating}", color = GoldenYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Text(
+                text = movie.title,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = Graphite100,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            if (!movie.description.isNullOrBlank()) {
+                Text(
+                    text = movie.description,
+                    fontSize = 11.sp,
+                    color = Graphite300,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MovieCard(
+    movie: MovieItem,
+    isInWatchlist: Boolean,
+    onClick: () -> Unit,
+    onToggleWatchlist: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(DarkSurface)
-            .border(1.dp, SketchBorder, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
+            .border(1.5.dp, SketchBorder, RoundedCornerShape(10.dp))
+            .clickable { onClick() }
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(210.dp)
-                .background(Graphite800)
+                .height(180.dp)
+                .background(Graphite900)
         ) {
-            if (!poster.isNullOrEmpty()) {
-                AsyncImage(
-                    model = poster,
-                    contentDescription = title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.Movie,
-                    contentDescription = null,
-                    tint = Graphite400,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .align(Alignment.Center)
-                )
-            }
+            AsyncImage(
+                model = movie.poster,
+                contentDescription = movie.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
 
-            // Rating Badge (top-right)
-            if (!rating.isNullOrEmpty() && rating != "N/A") {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(PitchBlack.copy(alpha = 0.85f))
-                        .border(1.dp, SketchBorder, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+            // Top Badges: Type tag & Watchlist button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = DarkSurface.copy(alpha = 0.85f),
+                    border = BorderStroke(0.5.dp, SketchBorder)
                 ) {
                     Text(
-                        text = "★ $rating",
-                        color = Color(0xFFF59E0B),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "Movie",
+                        color = Graphite200,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(DarkSurface.copy(alpha = 0.85f))
+                        .clickable { onToggleWatchlist() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isInWatchlist) Icons.Default.BookmarkCheck else Icons.Default.BookmarkBorder,
+                        contentDescription = "Watchlist",
+                        tint = if (isInWatchlist) EmeraldGreen else Graphite300,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
 
-            // Type Badge (top-left)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(6.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(DarkSurface.copy(alpha = 0.85f))
-                    .border(1.dp, SketchBorder, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            // Bottom Rating Badge
+            if (!movie.rating.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(DarkSurface.copy(alpha = 0.9f))
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = GoldenYellow, modifier = Modifier.size(11.dp))
+                    Text(text = " ${movie.rating}", color = GoldenYellow, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Title and Year Info
+        Column(modifier = Modifier.padding(8.dp)) {
+            Text(
+                text = movie.title,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Graphite100,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = type.uppercase(),
-                    color = EmeraldGreen,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    text = movie.year ?: "Movie",
+                    fontSize = 11.sp,
+                    color = Graphite400
+                )
+                if (movie.genres.isNotEmpty()) {
+                    Text(
+                        text = movie.genres.first(),
+                        fontSize = 11.sp,
+                        color = Graphite400,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeriesCard(
+    series: SeriesItem,
+    isInWatchlist: Boolean,
+    onClick: () -> Unit,
+    onToggleWatchlist: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(DarkSurface)
+            .border(1.5.dp, SketchBorder, RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .background(Graphite900)
+        ) {
+            AsyncImage(
+                model = series.poster,
+                contentDescription = series.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = EmeraldGreenDark,
+                    border = BorderStroke(0.5.dp, EmeraldGreen.copy(alpha = 0.5f))
+                ) {
+                    Text(
+                        text = "Series",
+                        color = EmeraldGreen,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(DarkSurface.copy(alpha = 0.85f))
+                        .clickable { onToggleWatchlist() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isInWatchlist) Icons.Default.BookmarkCheck else Icons.Default.BookmarkBorder,
+                        contentDescription = "Watchlist",
+                        tint = if (isInWatchlist) EmeraldGreen else Graphite300,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            if (!series.rating.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(DarkSurface.copy(alpha = 0.9f))
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = GoldenYellow, modifier = Modifier.size(11.dp))
+                    Text(text = " ${series.rating}", color = GoldenYellow, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Column(modifier = Modifier.padding(8.dp)) {
+            Text(
+                text = series.title,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Graphite100,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "${series.seasons.size} Season${if (series.seasons.size > 1) "s" else ""}",
+                    fontSize = 11.sp,
+                    color = Graphite400
+                )
+                if (series.totalEpisodes > 0) {
+                    Text(
+                        text = "${series.totalEpisodes} Eps",
+                        fontSize = 11.sp,
+                        color = Graphite400
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WatchlistCard(
+    item: WatchlistItem,
+    onClick: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(DarkSurface)
+            .border(1.5.dp, SketchBorder, RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .background(Graphite900)
+        ) {
+            AsyncImage(
+                model = item.poster,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(DarkSurface.copy(alpha = 0.85f))
+                    .clickable { onRemove() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.BookmarkRemove,
+                    contentDescription = "Remove from Watchlist",
+                    tint = DangerRed,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
 
-        // Title and Year
         Column(modifier = Modifier.padding(8.dp)) {
             Text(
-                text = title,
-                color = Graphite100,
+                text = item.title,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
+                color = Graphite100,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (!year.isNullOrEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
                 Text(
-                    text = year,
-                    color = Graphite400,
-                    fontSize = 11.sp
+                    text = item.type,
+                    fontSize = 11.sp,
+                    color = EmeraldGreen
                 )
+                if (!item.year.isNullOrBlank()) {
+                    Text(
+                        text = item.year,
+                        fontSize = 11.sp,
+                        color = Graphite400
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun EmptySearchState(query: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 40.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = Icons.Default.SearchOff,
+                contentDescription = null,
+                tint = Graphite400,
+                modifier = Modifier.size(48.dp)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text("No results for \"$query\"", color = Graphite300, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("Try searching by alternative title, acronym, or year", color = Graphite400, fontSize = 12.sp)
         }
     }
 }

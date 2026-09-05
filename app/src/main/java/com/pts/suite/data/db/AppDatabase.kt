@@ -23,7 +23,22 @@ interface MediaDao {
     @Query("DELETE FROM cached_series")
     suspend fun clearSeries()
 
-    // Offline Downloads
+    @Query("SELECT * FROM cached_watchlist ORDER BY title ASC")
+    suspend fun getWatchlist(): List<CachedWatchlistEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWatchlist(items: List<CachedWatchlistEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWatchlistItem(item: CachedWatchlistEntity)
+
+    @Query("DELETE FROM cached_watchlist WHERE id = :id")
+    suspend fun deleteWatchlistItem(id: String)
+
+    @Query("DELETE FROM cached_watchlist")
+    suspend fun clearWatchlist()
+
+    // Offline Local Downloads
     @Query("SELECT * FROM downloaded_media ORDER BY createdAt DESC")
     suspend fun getAllDownloads(): List<LocalDownloadEntity>
 
@@ -49,12 +64,65 @@ interface MediaDao {
     suspend fun deleteEntireSeries(showTitle: String)
 }
 
+@Dao
+interface VaultDao {
+    @Query("SELECT * FROM cached_vault_docs ORDER BY title ASC")
+    suspend fun getDocuments(): List<CachedVaultDocEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDocuments(docs: List<CachedVaultDocEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDocument(doc: CachedVaultDocEntity)
+
+    @Query("DELETE FROM cached_vault_docs WHERE id = :id")
+    suspend fun deleteDocument(id: Int)
+
+    @Query("DELETE FROM cached_vault_docs")
+    suspend fun clearDocuments()
+
+    @Query("SELECT * FROM cached_vault_notes ORDER BY updatedAt DESC")
+    suspend fun getNotes(): List<CachedVaultNoteEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNotes(notes: List<CachedVaultNoteEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNote(note: CachedVaultNoteEntity)
+
+    @Query("DELETE FROM cached_vault_notes WHERE id = :id")
+    suspend fun deleteNote(id: Int)
+
+    @Query("DELETE FROM cached_vault_notes")
+    suspend fun clearNotes()
+}
+
+@Dao
+interface DownloadQueueDao {
+    @Query("SELECT * FROM cached_download_tasks ORDER BY createdAt DESC")
+    suspend fun getTasks(): List<CachedDownloadTaskEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTasks(tasks: List<CachedDownloadTaskEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTask(task: CachedDownloadTaskEntity)
+
+    @Query("DELETE FROM cached_download_tasks WHERE id = :id")
+    suspend fun deleteTask(id: String)
+
+    @Query("DELETE FROM cached_download_tasks")
+    suspend fun clearTasks()
+}
+
 @Database(
     entities = [
         CachedMovieEntity::class,
         CachedSeriesEntity::class,
+        CachedWatchlistEntity::class,
         CachedVaultDocEntity::class,
         CachedVaultNoteEntity::class,
+        CachedDownloadTaskEntity::class,
         LocalDownloadEntity::class
     ],
     version = 1,
@@ -62,6 +130,8 @@ interface MediaDao {
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
+    abstract fun vaultDao(): VaultDao
+    abstract fun downloadQueueDao(): DownloadQueueDao
 
     companion object {
         @Volatile

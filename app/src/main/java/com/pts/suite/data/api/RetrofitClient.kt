@@ -44,8 +44,10 @@ object RetrofitClient {
 
     fun getService(context: Context): ApiService {
         val targetUrl = getServerUrl(context)
-        if (retrofit == null || currentBaseUrl != targetUrl) {
-            currentBaseUrl = targetUrl
+        val cleanTargetUrl = if (!targetUrl.endsWith("/")) "$targetUrl/" else targetUrl
+
+        if (retrofit == null || currentBaseUrl != cleanTargetUrl) {
+            currentBaseUrl = cleanTargetUrl
 
             val authInterceptor = Interceptor { chain ->
                 val original = chain.request()
