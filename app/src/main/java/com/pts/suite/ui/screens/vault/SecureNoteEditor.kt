@@ -417,7 +417,7 @@ private fun NoteEditDialog(
                 )
 
                 if (error != null) {
-                    Text(text = error!, color = DangerRed, fontSize = 11.sp)
+                    Text(text = error!!, color = DangerRed, fontSize = 11.sp)
                 }
             }
         },

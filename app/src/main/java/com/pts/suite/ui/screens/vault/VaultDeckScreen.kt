@@ -362,7 +362,7 @@ private fun EmptyVaultDeckState(
         ) {
             Icon(Icons.Default.CreditCard, contentDescription = null, tint = Graphite400, modifier = Modifier.size(44.dp))
             Text(
-                text = if (searchQuery.isNotEmpty()) "No cards match "$searchQuery"" else "Your Digital Wallet is empty",
+                text = if (searchQuery.isNotEmpty()) "No cards match \"$searchQuery\"" else "Your Digital Wallet is empty",
                 color = Graphite200,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
